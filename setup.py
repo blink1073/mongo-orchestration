@@ -126,7 +126,8 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            'mongo-orchestration = mongo_orchestration.server:main'
+            'mongo-orchestration = mongo_orchestration.server:main',
+            'mongo-launch = mongo_orchestration.launch:main'
         ]
     },
     cmdclass={'test': test},

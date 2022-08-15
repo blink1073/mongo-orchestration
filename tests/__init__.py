@@ -17,6 +17,7 @@ import re
 import sys
 import time
 
+import mongo_orchestration
 from mongo_orchestration import set_releases
 from mongo_orchestration.servers import Server, Servers
 
@@ -67,7 +68,7 @@ class SSLTestCase(unittest.TestCase):
 
 def certificate(cert_name):
     """Return the path to the PEM file with the given name."""
-    return os.path.join(os.path.dirname(__file__), 'lib', cert_name)
+    return os.path.join(os.path.dirname(mongo_orchestration.__file__), 'lib', cert_name)
 
 
 def assert_eventually(condition, message=None, max_tries=60):
