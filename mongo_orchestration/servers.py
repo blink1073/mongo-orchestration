@@ -365,7 +365,7 @@ class Server(BaseModel):
                     % max_attempts)
         except (OSError, TimeoutError):
             logpath = self.cfg.get('logpath')
-            if logpath:
+            if logpath and os.path.exists(logpath):
                 # Copy the server logs into the mongo-orchestration logs.
                 logger.error(
                     "Could not start Server. Please find server log below.\n"

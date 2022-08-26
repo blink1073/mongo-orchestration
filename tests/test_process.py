@@ -166,9 +166,12 @@ class ProcessTestCase(unittest.TestCase):
     def test_wait_for(self):
         port = self.pp.port(check=True)
         self.listen_port(port, max_connection=1)
-        self.assertTrue(process.wait_for(port, 1))
-        self.sockets.pop(port).close()
-        self.assertFalse(process.wait_for(port, 1))
+        port = self.pp.port(check=True)
+        config_path = process.write_config(self.cfg)
+        self.tmp_files.append(config_path)
+        proc, host = process.mprocess(self.bin_path, config_path, port=port)
+        self.assertTrue(process.wait_for(proc, port, 1))
+        process.kill_mprocess(proc)
 
     def test_repair(self):
         port = self.pp.port(check=True)
@@ -201,7 +204,7 @@ class ProcessTestCase(unittest.TestCase):
         self.assertRaises(OSError, process.mprocess,
                           'fake-process_', config_path, None, 30)
         process.write_config({"fake": True}, config_path)
-        self.assertRaises(TimeoutError, process.mprocess,
+        self.assertRaises(OSError, process.mprocess,
                           self.bin_path, config_path, None, 30)
 
     def test_mprocess(self):
