@@ -101,7 +101,7 @@ class ReplicaSetsTestCase(unittest.TestCase):
         server1 = "{hostname}:{port}".format(hostname=HOSTNAME, port=port1)
         server2 = "{hostname}:{port}".format(hostname=HOSTNAME, port=port2)
         c = pymongo.MongoClient([server1, server2], replicaSet=repl_id)
-        self.assertEqual(c.admin.eval("rs.conf()")['_id'], repl_id)
+        c.admin.command('ping')
         c.close()
 
     def test_rs_new_with_auth(self):
@@ -115,11 +115,10 @@ class ReplicaSetsTestCase(unittest.TestCase):
         server1 = "{hostname}:{port}".format(hostname=HOSTNAME, port=port1)
         server2 = "{hostname}:{port}".format(hostname=HOSTNAME, port=port2)
         c = pymongo.MongoClient([server1, server2], replicaSet=repl_id)
-        self.assertRaises(pymongo.errors.OperationFailure, c.admin.collection_names)
-        self.assertTrue(c.admin.authenticate('admin', 'admin'))
-        self.assertTrue(isinstance(c.admin.collection_names(), list))
-        c.admin.logout()
-        self.assertRaises(pymongo.errors.OperationFailure, c.admin.collection_names)
+        self.assertRaises(pymongo.errors.OperationFailure, c.admin.list_collection_names)
+        c.close()
+        c = pymongo.MongoClient([server1, server2], replicaSet=repl_id, username='admin', password='admin')
+        self.assertTrue(isinstance(c.admin.list_collection_names(), list))
         c.close()
 
     def test_info(self):
@@ -447,11 +446,10 @@ class ReplicaSetTestCase(unittest.TestCase):
     def test_run_command(self):
         self.repl_cfg = {'members': [{}, {}]}
         self.repl = ReplicaSet(self.repl_cfg)
-        self.assertEqual(self.repl.run_command("rs.status()", is_eval=True)['ok'], 1)
-        result = self.repl.run_command('serverStatus', arg=None, is_eval=False, member_id=0)['repl']
+        result = self.repl.run_command('serverStatus', arg=None, member_id=0)['repl']
         for key in ('me', 'ismaster', 'setName', 'primary', 'hosts'):
             self.assertTrue(key in result)
-        self.assertEqual(self.repl.run_command(command="replSetGetStatus", is_eval=False)['ok'], 1)
+        self.assertEqual(self.repl.run_command(command="replSetGetStatus")['ok'], 1)
 
     def test_config(self):
         self.repl_cfg = {'members': [{}, {}]}
@@ -564,20 +562,20 @@ class ReplicaSetTestCase(unittest.TestCase):
     def test_hidden(self):
         self.repl = ReplicaSet(self.repl_cfg)
         for _ in self.repl.hidden():
-            self.assertTrue(self.repl.run_command('serverStatus', arg=None, is_eval=False, member_id=2)['repl']['hidden'])
+            self.assertTrue(self.repl.run_command('serverStatus', arg=None, member_id=2)['repl']['hidden'])
 
     def test_passives(self):
         self.repl = ReplicaSet(self.repl_cfg)
         self.repl.repl_member_add({"rsParams": {"priority": 0}})
         for member in self.repl.passives():
-            self.assertTrue(member['host'] in self.repl.run_command('isMaster', is_eval=False).get('passives'))
+            self.assertTrue(member['host'] in self.repl.run_command('isMaster').get('passives'))
 
     def test_servers(self):
         self.repl_cfg = {'members': [{}, {}]}
         self.repl = ReplicaSet(self.repl_cfg)
         self.repl.repl_member_add({"rsParams": {"priority": 0}})
         for member in self.repl.servers():
-            self.assertTrue(member['host'] in self.repl.run_command('isMaster', is_eval=False).get('hosts'))
+            self.assertTrue(member['host'] in self.repl.run_command('isMaster').get('hosts'))
 
     def test_compare_servers_passives(self):
         self.repl = ReplicaSet(self.repl_cfg)
@@ -668,16 +666,16 @@ class ReplicaSetSSLTestCase(SSLTestCase):
         # Should create an extra user. No raise on authenticate.
         client = pymongo.MongoClient(
             self.repl.primary(), ssl_certfile=DEFAULT_CLIENT_CERT,
-            ssl_cert_reqs=ssl.CERT_NONE)
-        client['$external'].authenticate(
-            DEFAULT_SUBJECT, mechanism='MONGODB-X509')
+            ssl_cert_reqs=ssl.CERT_NONE, username=DEFAULT_SUBJECT,
+            auth_mechanism='MONGODB-X509')
+        client.admin.command('ping')
 
         # Should create the user we requested. No raise on authenticate.
         client = pymongo.MongoClient(
             self.repl.primary(), ssl_certfile=certificate('client.pem'),
-            ssl_cert_reqs=ssl.CERT_NONE)
-        client['$external'].authenticate(
-            TEST_SUBJECT, mechanism='MONGODB-X509')
+            ssl_cert_reqs=ssl.CERT_NONE, username=TEST_SUBJECT,
+            auth_mechanism='MONGODB-X509')
+        client.admin.command('ping')
 
     def test_scram_with_ssl(self):
         member_params = {'procParams': {'clusterAuthMode': 'x509'}}
@@ -698,8 +696,8 @@ class ReplicaSetSSLTestCase(SSLTestCase):
         # Should create the user we requested. No raise on authenticate.
         client = pymongo.MongoClient(
             self.repl.primary(), ssl_certfile=certificate('client.pem'),
-            ssl_cert_reqs=ssl.CERT_NONE)
-        client.admin.authenticate('luke', 'ekul')
+            ssl_cert_reqs=ssl.CERT_NONE, username='luke', password='ekul')
+        client.admin.command('ping')
         # This should be the only user.
         self.assertEqual(len(client.admin.command('usersInfo')['users']), 1)
         self.assertFalse(client['$external'].command('usersInfo')['users'])
@@ -804,30 +802,28 @@ class ReplicaSetAuthTestCase(unittest.TestCase):
             self.repl.cleanup()
 
     def test_auth_connection(self):
-        self.assertTrue(isinstance(self.repl.connection().admin.collection_names(), list))
+        self.assertTrue(isinstance(self.repl.connection().admin.list_collection_names(), list))
         c = pymongo.MongoReplicaSetClient(self.repl.primary(), replicaSet=self.repl.repl_id)
-        self.assertRaises(pymongo.errors.OperationFailure, c.admin.collection_names)
+        self.assertRaises(pymongo.errors.OperationFailure, c.admin.list_collection_names)
 
     def test_auth_admin(self):
         c = pymongo.MongoReplicaSetClient(self.repl.primary(), replicaSet=self.repl.repl_id)
-        self.assertRaises(pymongo.errors.OperationFailure, c.admin.collection_names)
-        self.assertTrue(c.admin.authenticate('admin', 'admin'))
-        self.assertTrue(isinstance(c.admin.collection_names(), list))
-        self.assertTrue(c.admin.logout() is None)
-        self.assertRaises(pymongo.errors.OperationFailure, c.admin.collection_names)
+        self.assertRaises(pymongo.errors.OperationFailure, c.admin.list_collection_names)
+        c.close()
+        c = pymongo.MongoReplicaSetClient(self.repl.primary(), replicaSet=self.repl.repl_id, username='admin', password='admin')
+        self.assertTrue(isinstance(c.admin.list_collection_names(), list))
+        c.close()
 
     def test_auth_collection(self):
-        c = pymongo.MongoReplicaSetClient(self.repl.primary(), replicaSet=self.repl.repl_id)
-        self.assertTrue(c.admin.authenticate('admin', 'admin'))
+        c = pymongo.MongoReplicaSetClient(self.repl.primary(), replicaSet=self.repl.repl_id, username='admin', password='admin')
         db = c.test_auth
-        db.add_user('user', 'userpass', roles=['readWrite'])
-        c.admin.logout()
-
-        self.assertTrue(db.authenticate('user', 'userpass'))
-        self.assertTrue(db.foo.insert({'foo': 'bar'}, w=2, wtimeout=10000))
+        db.command('createUser', 'user', pwd='userpass', roles=['readWrite'])
+        c.close()
+        c = pymongo.MongoReplicaSetClient(self.repl.primary(), replicaSet=self.repl.repl_id, username='user', password='userpass')
+        db = c.test_auth
+        self.assertTrue(db.foo.insert_one({'foo': 'bar'}, w=2))
         self.assertTrue(isinstance(db.foo.find_one(), dict))
-        db.logout()
-        self.assertRaises(pymongo.errors.OperationFailure, db.foo.find_one)
+        c.close()
 
     def test_auth_arbiter_member_info(self):
         self.repl.cleanup()

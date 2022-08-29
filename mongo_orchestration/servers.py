@@ -204,22 +204,23 @@ class Server(BaseModel):
     def connection(self):
         """return authenticated connection"""
         c = pymongo.MongoClient(
-            self.hostname, fsync=True,
+            self.hostname,
             socketTimeoutMS=self.socket_timeout, **self.kwargs)
         connected(c)
         if not self.is_mongos and self.login and not self.restart_required:
-            db = c[self.auth_source]
-            if self.x509_extra_user:
-                auth_dict = {
-                    'name': DEFAULT_SUBJECT, 'mechanism': 'MONGODB-X509'}
-            else:
-                auth_dict = {'name': self.login, 'password': self.password}
+            kwargs = self.kwargs.copy()
+            auth_dict = dict(username=self.login, password=self.password)
+            kwargs.update(auth_dict)
+            c = pymongo.MongoClient(
+                self.hostname, fsync=True,
+                socketTimeoutMS=self.socket_timeout, **self.kwargs)
             try:
-                db.authenticate(**auth_dict)
+                connected(c)
             except:
                 logger.exception("Could not authenticate to %s with %r"
                                  % (self.hostname, auth_dict))
                 raise
+        c.admin.command('fsync', lock=True)
         return c
 
     @property
@@ -259,24 +260,22 @@ class Server(BaseModel):
         except pymongo.errors.AutoReconnect:
             pass
 
-    def run_command(self, command, arg=None, is_eval=False):
+    def run_command(self, command, arg=None):
         """run command on the server
 
         Args:
             command - command string
             arg - command argument
-            is_eval - if True execute command as eval
 
         return command's result
         """
-        mode = is_eval and 'eval' or 'command'
 
         if isinstance(arg, tuple):
             name, d = arg
         else:
             name, d = arg, {}
 
-        result = getattr(self.connection.admin, mode)(command, name, **d)
+        result = self.connection.admin.command(command, name, **d)
         return result
 
     @property
@@ -432,6 +431,7 @@ class Server(BaseModel):
         """stop server"""
         try:
             self.shutdown()
+            return True
         except (PyMongoError, ServersError) as exc:
             logger.info("Killing %s with signal, shutdown command failed: %r",
                         self.name, exc)
@@ -534,9 +534,9 @@ class Servers(Singleton, Container):
         server.stop()
         server.cleanup()
 
-    def db_command(self, server_id, command, arg=None, is_eval=False):
+    def db_command(self, server_id, command, arg=None):
         server = self._storage[server_id]
-        result = server.run_command(command, arg, is_eval)
+        result = server.run_command(command, arg)
         self._storage[server_id] = server
         return result
 

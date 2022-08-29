@@ -122,7 +122,8 @@ class ShardsTestCase(unittest.TestCase):
         host = "{hostname}:{port}".format(hostname=HOSTNAME, port=port)
         c = pymongo.MongoClient(host)
         self.assertRaises(pymongo.errors.OperationFailure, c.admin.command, "listShards")
-        c.admin.authenticate('admin', 'adminpass')
+        c.close()
+        c = pymongo.MongoClient(host, username='admin', password='adminpass')
         self.assertTrue(isinstance(c.admin.command("listShards"), dict))
         c.close()
 
@@ -327,7 +328,8 @@ class ShardTestCase(unittest.TestCase):
         self.sh = ShardedCluster(config)
         c = pymongo.MongoClient(self.sh.router['hostname'])
         self.assertRaises(pymongo.errors.OperationFailure, c.admin.command, "listShards")
-        c.admin.authenticate('admin', 'adminpass')
+        c.close()
+        c = pymongo.MongoClient(self.sh.router['hostname'], username='admin', password='adminpass')
         self.assertTrue(isinstance(c.admin.command("listShards"), dict))
         for item in c.admin.command("listShards")['shards']:
             self.assertTrue(item['_id'] in ('sh01', 'sh02'))
@@ -411,7 +413,7 @@ class ShardTestCase(unittest.TestCase):
     def test_router_command(self):
         config = {'shards': [{}, {}]}
         self.sh = ShardedCluster(config)
-        result = self.sh.router_command('listShards', is_eval=False)
+        result = self.sh.router_command('listShards')
         self.assertEqual(result['ok'], 1)
         self.sh.cleanup()
 
@@ -642,15 +644,16 @@ class ShardSSLTestCase(SSLTestCase):
         host = self.sh.router['hostname']
         client = pymongo.MongoClient(
             host, ssl_certfile=DEFAULT_CLIENT_CERT,
-            ssl_cert_reqs=ssl.CERT_NONE)
-        client['$external'].authenticate(
-            DEFAULT_SUBJECT, mechanism='MONGODB-X509')
+            ssl_cert_reqs=ssl.CERT_NONE, username=DEFAULT_SUBJECT, auth_mechanism='MONGODB-X509')
+        client.admin.command('ping')
+        client.close()
 
         # Should create the user we requested. No raise on authenticate.
         client = pymongo.MongoClient(
             host, ssl_certfile=certificate('client.pem'),
-            ssl_cert_reqs=ssl.CERT_NONE)
-        client['$external'].authenticate(TEST_SUBJECT, mechanism='MONGODB-X509')
+            ssl_cert_reqs=ssl.CERT_NONE, username=TEST_SUBJECT, auth_mechanism='MONGODB-X509')
+        client.admin.ping('command')
+        client.close()
 
     def test_scram_with_ssl(self):
         proc_params = {'procParams': {'clusterAuthMode': 'x509'}}
@@ -677,8 +680,7 @@ class ShardSSLTestCase(SSLTestCase):
         host = self.sh.router['hostname']
         client = pymongo.MongoClient(
             host, ssl_certfile=certificate('client.pem'),
-            ssl_cert_reqs=ssl.CERT_NONE)
-        client.admin.authenticate('luke', 'ekul')
+            ssl_cert_reqs=ssl.CERT_NONE, username='luke', password='ekul')
         # This should be the only user.
         self.assertEqual(len(client.admin.command('usersInfo')['users']), 1)
         self.assertFalse(client['$external'].command('usersInfo')['users'])

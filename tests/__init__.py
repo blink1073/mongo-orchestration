@@ -33,9 +33,6 @@ TEST_RELEASES = (
 # Set up the default mongo binaries to use from MONGOBIN.
 set_releases(*TEST_RELEASES)
 
-# Turn off journal for tests.
-Server.mongod_default['nojournal'] = True
-
 SSL_ENABLED = False
 SERVER_VERSION = (2, 6)
 __server_id = Servers().create(name='mongod', procParams={})
@@ -50,12 +47,8 @@ finally:
     Servers().cleanup()
 
 
-if sys.version_info[:2] == (2, 6):
-    import unittest2 as unittest
-    from unittest2 import SkipTest
-else:
-    import unittest
-    from unittest import SkipTest
+import unittest
+from unittest import SkipTest
 
 
 class SSLTestCase(unittest.TestCase):

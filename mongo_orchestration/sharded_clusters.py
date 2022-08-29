@@ -28,6 +28,8 @@ from mongo_orchestration.errors import ShardedClusterError
 from mongo_orchestration.servers import Servers, Server
 from mongo_orchestration.replica_sets import ReplicaSets
 from mongo_orchestration.singleton import Singleton
+
+from bson import Code
 from pymongo import MongoClient, write_concern
 
 logger = logging.getLogger(__name__)
@@ -57,6 +59,10 @@ class ShardedCluster(BaseModel):
 
         if self.sslParams:
             self.kwargs.update(DEFAULT_SSL_OPTIONS)
+
+        if self.login and not self.restart_required:
+            self.kwargs['username'] = self.login
+            self.kwargs['password'] = self.password
 
         self.enable_ipv6 = common.ipv6_enabled_sharded(params)
         # Determine what to do with config servers via mongos version.
@@ -155,7 +161,7 @@ class ShardedCluster(BaseModel):
                     client = ReplicaSets()._storage[instance_id].connection()
                 db = client[self.auth_source]
                 if self.x509_extra_user:
-                    db.add_user(DEFAULT_SUBJECT, roles=roles)
+                    db.command("CreateUser", DEFAULT_SUBJECT, roles=roles)
 
                 create_user(db, self.mongos_version, self.login, self.password,
                             roles)
@@ -297,16 +303,9 @@ class ShardedCluster(BaseModel):
 
     def create_connection(self, host):
         c = MongoClient(
-            host, w='majority', fsync=True,
+            host, w='majority',
             socketTimeoutMS=self.socket_timeout, **self.kwargs)
-        if self.login and not self.restart_required:
-            try:
-                c.admin.authenticate(self.login, self.password)
-            except:
-                logger.exception(
-                    "Could not authenticate to %s as %s/%s"
-                    % (host, self.login, self.password))
-                raise
+        c.admin.command('fsync', lock=True)
         return c
 
     def connection(self):
@@ -325,24 +324,21 @@ class ShardedCluster(BaseModel):
                 clients.append(client)
         return clients
 
-    def router_command(self, command, arg=None, is_eval=False):
+    def router_command(self, command, arg=None):
         """run command on the router server
 
         Args:
             command - command string
             arg - command argument
-            is_eval - if True execute command as eval
 
         return command's result
         """
-        mode = is_eval and 'eval' or 'command'
-
         if isinstance(arg, tuple):
             name, d = arg
         else:
             name, d = arg, {}
 
-        result = getattr(self.connection().admin, mode)(command, name, **d)
+        result = self.connection().admin.command(command, name, **d)
         return result
 
     def router_remove(self, router_id):
@@ -353,7 +349,7 @@ class ShardedCluster(BaseModel):
 
     def _add(self, shard_uri, name):
         """execute addShard command"""
-        return self.router_command("addShard", (shard_uri, {"name": name}), is_eval=False)
+        return self.router_command("addShard", (shard_uri, {"name": name}))
 
     def member_add(self, member_id=None, params=None):
         """add new member into existing configuration"""
@@ -406,7 +402,7 @@ class ShardedCluster(BaseModel):
 
     def _remove(self, shard_name):
         """remove member from configuration"""
-        result = self.router_command("removeShard", shard_name, is_eval=False)
+        result = self.router_command("removeShard", shard_name)
         if result['ok'] == 1 and result['state'] == 'completed':
             shard = self._shards.pop(shard_name)
             if shard.get('isServer', False):

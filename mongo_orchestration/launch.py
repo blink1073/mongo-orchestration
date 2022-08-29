@@ -117,9 +117,11 @@ class MCTestObject(object):
         return ret
 
     def client(self, **kwargs):
-        client = pymongo.MongoClient(self.uri, **kwargs)
+        kwargs = kwargs.copy()
         if db_user:
-            client.admin.authenticate(db_user, db_password)
+            kwargs['username'] = db_user
+            kwargs['password'] = db_password
+        client = pymongo.MongoClient(self.uri, **kwargs)
         return client
 
     def stop(self):

@@ -65,6 +65,13 @@ class ReplicaSet(BaseModel):
         if self.sslParams:
             self.kwargs.update(DEFAULT_SSL_OPTIONS)
 
+        if self.x509_extra_user:
+            self.kwargs['username'] = DEFAULT_SUBJECT
+            self.kwargs['auth_mechanism'] = 'MONGODB-X509'
+        elif self.login and self.restart_required:
+            self.kwargs['username'] = self.login
+            self.kwargs['password'] = self.password
+
         members = rs_params.get('members', [])
         # Enable ipv6 on all members if any have it enabled.
         self.enable_ipv6 = ipv6_enabled_repl(rs_params)
@@ -257,7 +264,7 @@ class ReplicaSet(BaseModel):
             raise ReplicaSetError("Could not add member to ReplicaSet.")
         return member_id
 
-    def run_command(self, command, arg=None, is_eval=False, member_id=None):
+    def run_command(self, command, arg=None, member_id=None):
         """run command on replica set
         if member_id is specified command will be execute on this server
         if member_id is not specified command will be execute on the primary
@@ -265,17 +272,15 @@ class ReplicaSet(BaseModel):
         Args:
             command - command string
             arg - command argument
-            is_eval - if True execute command as eval
             member_id - member id
 
         return command's result
         """
-        logger.debug("run_command({command}, {arg}, {is_eval}, {member_id})".format(**locals()))
-        mode = is_eval and 'eval' or 'command'
+        logger.debug("run_command({command}, {arg}, {member_id})".format(**locals()))
         hostname = None
         if isinstance(member_id, int):
             hostname = self.member_id_to_host(member_id)
-        result = getattr(self.connection(hostname=hostname).admin, mode)(command, arg)
+        result = self.connection(hostname=hostname).admin.command(command, arg)
         logger.debug("command result: {result}".format(result=result))
         return result
 
@@ -371,7 +376,7 @@ class ReplicaSet(BaseModel):
                     result['rsInfo'] = {
                         'arbiterOnly': True, 'secondary': False, 'primary': False}
                     return result
-            repl = self.run_command('serverStatus', arg=None, is_eval=False, member_id=member_id)['repl']
+            repl = self.run_command('serverStatus', arg=None, member_id=member_id)['repl']
             logger.debug("member {member_id} repl info: {repl}".format(**locals()))
             for key in ('votes', 'tags', 'arbiterOnly', 'buildIndexes', 'hidden', 'priority', 'slaveDelay', 'secondaryDelaySecs', 'secondary'):
                 if key in repl:
@@ -395,7 +400,7 @@ class ReplicaSet(BaseModel):
     def members(self):
         """return list of members information"""
         result = list()
-        for member in self.run_command(command="replSetGetStatus", is_eval=False)['members']:
+        for member in self.run_command(command="replSetGetStatus")['members']:
             result.append({
                 "_id": member['_id'],
                 "host": member["name"],
@@ -411,27 +416,12 @@ class ReplicaSet(BaseModel):
 
     def get_members_in_state(self, state):
         """return all members of replica set in specific state"""
-        members = self.run_command(command='replSetGetStatus', is_eval=False)['members']
+        members = self.run_command(command='replSetGetStatus')['members']
         return [member['name'] for member in members if member['state'] == state]
 
     def _authenticate_client(self, client):
         """Authenticate the client if necessary."""
-        if self.login and not self.restart_required:
-            try:
-                db = client[self.auth_source]
-                if self.x509_extra_user:
-                    db.authenticate(
-                        DEFAULT_SUBJECT,
-                        mechanism='MONGODB-X509'
-                    )
-                else:
-                    db.authenticate(
-                        self.login, self.password)
-            except Exception:
-                logger.exception(
-                    "Could not authenticate to %r as %s/%s"
-                    % (client, self.login, self.password))
-                raise
+        client.admin.command('ping')
 
     def connection(self, hostname=None, read_preference=pymongo.ReadPreference.PRIMARY, timeout=300):
         """return MongoReplicaSetClient object if hostname specified
@@ -451,19 +441,21 @@ class ReplicaSet(BaseModel):
                         servers, replicaSet=self.repl_id,
                         read_preference=read_preference,
                         socketTimeoutMS=self.socket_timeout,
-                        w=self._write_concern, fsync=True, **self.kwargs)
+                        w=self._write_concern, **self.kwargs)
                     connected(c)
                     if c.primary:
                         self._authenticate_client(c)
                         return c
+                    c.admin.command('fsync', lock=True)
                     raise pymongo.errors.AutoReconnect("No replica set primary available")
                 else:
                     logger.debug("connection to the {servers}".format(**locals()))
                     c = pymongo.MongoClient(
                         servers, socketTimeoutMS=self.socket_timeout,
-                        w=self._write_concern, fsync=True, **self.kwargs)
+                        w=self._write_concern, **self.kwargs)
                     connected(c)
                     self._authenticate_client(c)
+                    c.admin.command('fsync', lock=True)
                     return c
             except (pymongo.errors.PyMongoError):
                 exc_type, exc_value, exc_tb = sys.exc_info()

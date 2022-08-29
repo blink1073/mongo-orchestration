@@ -111,7 +111,7 @@ class BaseModel(object):
         """Add given user, and extra x509 user if necessary."""
         roles = self._user_roles(db.client)
         if self.x509_extra_user:
-            db.add_user(DEFAULT_SUBJECT, roles=roles)
+            db.command("createUser", DEFAULT_SUBJECT, roles=roles)
             # Fix kwargs to MongoClient.
             self.kwargs['ssl_certfile'] = DEFAULT_CLIENT_CERT
 
@@ -127,7 +127,7 @@ def create_user(db, mongo_version, user, password, roles):
         db.command('createUser', user, pwd=password, roles=roles,
                    writeConcern=db.write_concern.document)
     else:
-        db.add_user(user, password=password, roles=roles)
+        db.command("CreateUser", user, pwd=password, roles=roles)
 
 
 def connected(client):

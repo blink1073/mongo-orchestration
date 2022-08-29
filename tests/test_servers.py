@@ -29,6 +29,7 @@ sys.path.insert(0, '../')
 
 from mongo_orchestration.common import (
     connected, DEFAULT_SUBJECT, DEFAULT_CLIENT_CERT)
+from mongo_orchestration import errors
 from mongo_orchestration.servers import Server, Servers
 from mongo_orchestration.process import PortPool
 from tests import (
@@ -138,17 +139,17 @@ class ServersTestCase(unittest.TestCase):
         info = self.servers.info(server_id2)
         self.assertTrue(info['procInfo']['pid'] > 0)
 
-        self.assertRaises(OSError, self.servers.create, 'fake_process_', {})
+        self.assertRaises(errors.TimeoutError, self.servers.create, 'fake_process_', {})
 
     def test_new_server_with_auth(self):
         server_id = self.servers.create('mongod', {}, login='adminko', password='password', autostart=True)
         hostname = self.servers.hostname(server_id)
         c = pymongo.MongoClient(hostname)
-        self.assertRaises(pymongo.errors.OperationFailure, c.admin.collection_names)
-        self.assertTrue(c.admin.authenticate('adminko', 'password'))
-        self.assertTrue(isinstance(c.admin.collection_names(), list))
-        self.assertTrue(c.admin.logout() is None)
-        self.assertRaises(pymongo.errors.OperationFailure, c.admin.collection_names)
+        self.assertRaises(pymongo.errors.OperationFailure, c.admin.list_collection_names)
+        c.close()
+        c = pymongo.MongoClient(hostname, username="adminko", password="password")
+        self.assertTrue(isinstance(c.admin.list_collection_names(), list))
+        c.close()
 
     def test_hdel(self):
         self.assertEqual(len(self.servers), 0)
@@ -200,10 +201,9 @@ class ServersTestCase(unittest.TestCase):
 
     def test_db_command(self):
         h_id = self.servers.create('mongod', {}, autostart=False)
-        self.assertRaises(pymongo.errors.PyMongoError, self.servers.db_command, h_id, 'serverStatus', None, False)
+        self.assertRaises(pymongo.errors.PyMongoError, self.servers.db_command, h_id, 'serverStatus', None)
         self.servers.command(h_id, 'start', 10)
-        self.assertEqual(self.servers.db_command(h_id, 'serverStatus', arg=None, is_eval=False).get('ok', -1), 1)
-        self.assertEqual(self.servers.db_command(h_id, 'db.getName()', arg=None, is_eval=True), 'admin')
+        self.assertEqual(self.servers.db_command(h_id, 'serverStatus', arg=None).get('ok', -1), 1)
 
     def test_id_specified(self):
         id = 'xyzzy'
@@ -253,17 +253,6 @@ class ServerTestCase(unittest.TestCase):
         self.assertTrue(os.path.exists(log_dir))
         self.assertTrue(os.path.exists(db_path))
 
-    def test_mongos(self):
-        self.server.cleanup()
-        self.server = Server(self.mongod, {'configsvr': True})
-        self.server.start(30)
-        mongos = os.path.join(os.environ.get('MONGOBIN', ''), 'mongos')
-        self.server2 = Server(mongos, {'configdb': self.server.hostname})
-        self.assertTrue(self.server2.start())
-        self.assertTrue(self.server2.info()['statuses'].get('mongos', False))
-        self.server2.stop()
-        self.server2.cleanup()
-
     def test_run_command(self):
         self.server.start(30)
 
@@ -293,10 +282,9 @@ class ServerTestCase(unittest.TestCase):
         server2.cleanup()
 
     def test_command(self):
-        self.assertRaises(pymongo.errors.PyMongoError, self.server.run_command, 'serverStatus', None, False)
+        self.assertRaises(pymongo.errors.PyMongoError, self.server.run_command, 'serverStatus', None)
         self.server.start(30)
-        self.assertEqual(self.server.run_command('serverStatus', arg=None, is_eval=False).get('ok', -1), 1)
-        self.assertEqual(self.server.run_command('db.getName()', arg=None, is_eval=True), 'admin')
+        self.assertEqual(self.server.run_command('serverStatus', arg=None).get('ok', -1), 1)
 
     def test_start(self):
         self.assertNotIn('pid', self.server.info()['procInfo'])
@@ -304,7 +292,7 @@ class ServerTestCase(unittest.TestCase):
         self.assertTrue(self.server.info()['procInfo']['pid'] > 0)
 
         fake_server = Server('fake_proc_', {})
-        self.assertRaises(OSError, fake_server.start, 5)
+        self.assertRaises(errors.TimeoutError, fake_server.start, 5)
         fake_server.cleanup()
 
     def test_start_with_repair(self):
@@ -349,14 +337,13 @@ class ServerTestCase(unittest.TestCase):
             raise SkipTest(
                 "Need at least MongoDB >= 2.4 to test setParameter.")
         self.server.cleanup()
-        cfg = {"setParameter": {"textSearchEnabled": True,
-                                "enableTestCommands": 1}}
+        cfg = {"setParameter": {"enableTestCommands": 1}}
         self.server = Server(self.mongod, cfg)
         self.server.start()
         c = pymongo.MongoClient(self.server.hostname)
-        c.foo.bar.insert({"data": "text stuff"})
+        c.foo.bar.insert_one({"data": "text stuff"})
         # No Exception.
-        c.foo.bar.ensure_index([("data", pymongo.TEXT)])
+        c.foo.bar.create_index([("data", pymongo.TEXT)], unique=True)
         # No Exception.
         c.admin.command("sleep", secs=1)
 
@@ -411,15 +398,15 @@ class ServerSSLTestCase(SSLTestCase):
         # Should create an extra user. Doesn't raise.
         client = pymongo.MongoClient(
             self.server.hostname, ssl_certfile=DEFAULT_CLIENT_CERT,
-            ssl_cert_reqs=ssl.CERT_NONE)
-        client['$external'].authenticate(
-            DEFAULT_SUBJECT, mechanism='MONGODB-X509')
+            ssl_cert_reqs=ssl.CERT_NONE, username=DEFAULT_SUBJECT, auth_mechanism='MONGODB-X509')
+        client.admin.command('ping')
+        client.close()
         # Should also create the user we requested. Doesn't raise.
         client = pymongo.MongoClient(
             self.server.hostname, ssl_certfile=certificate('client.pem'),
-            ssl_cert_reqs=ssl.CERT_NONE)
-        client['$external'].authenticate(
-            TEST_SUBJECT, mechanism='MONGODB-X509')
+            ssl_cert_reqs=ssl.CERT_NONE, username=TEST_SUBJECT, auth_mechanism='MONGODB-X509')
+        client.admin.command('ping')
+        client.close()
 
     def test_scram_with_ssl(self):
         ssl_params = {
@@ -435,8 +422,7 @@ class ServerSSLTestCase(SSLTestCase):
         # Should create the user we requested. No raise on authenticate.
         client = pymongo.MongoClient(
             self.server.hostname, ssl_certfile=certificate('client.pem'),
-            ssl_cert_reqs=ssl.CERT_NONE)
-        client.admin.authenticate('luke', 'ekul')
+            ssl_cert_reqs=ssl.CERT_NONE, username='luke', password='ekul')
         # This should be the only user.
         self.assertEqual(len(client.admin.command('usersInfo')['users']), 1)
         self.assertFalse(client['$external'].command('usersInfo')['users'])
@@ -507,56 +493,33 @@ class ServerAuthTestCase(unittest.TestCase):
         self.assertIn('admin:admin', auth_uri)
         self.assertIn('authSource=admin', auth_uri)
 
-    def test_mongos(self):
-        self.server.stop()
-        self.server.cleanup()
-        self.server = Server(self.mongod, {'configsvr': True}, auth_key='secret')
-        self.server.start(30)
-        mongos = os.path.join(os.environ.get('MONGOBIN', ''), 'mongos')
-        self.server2 = Server(
-            mongos, {'configdb': self.server.hostname},
-            auth_key='secret', login='admin', password='admin')
-        self.server2.start()
-
-        for server in (self.server, self.server2):
-            c = pymongo.MongoClient(server.host, server.port)
-            self.assertRaises(pymongo.errors.OperationFailure, c.admin.collection_names)
-            self.assertTrue(c.admin.authenticate('admin', 'admin'))
-            self.assertTrue(isinstance(c.admin.collection_names(), list))
-            self.assertTrue(c.admin.logout() is None)
-            self.assertRaises(pymongo.errors.OperationFailure, c.admin.collection_names)
-
-        self.server2.stop()
-        self.server2.cleanup()
-
     def test_auth_connection(self):
-        self.assertTrue(isinstance(self.server.connection.admin.collection_names(), list))
         c = pymongo.MongoClient(self.server.host, self.server.port)
-        self.assertRaises(pymongo.errors.OperationFailure, c.admin.collection_names)
+        self.assertRaises(pymongo.errors.OperationFailure, c.admin.list_collection_names)
         self.server.restart()
         c = pymongo.MongoClient(self.server.host, self.server.port)
-        self.assertRaises(pymongo.errors.OperationFailure, c.admin.collection_names)
+        self.assertRaises(pymongo.errors.OperationFailure, c.admin.list_collection_names)
 
     def test_auth_admin(self):
         c = pymongo.MongoClient(self.server.host, self.server.port)
-        self.assertRaises(pymongo.errors.OperationFailure, c.admin.collection_names)
-        self.assertTrue(c.admin.authenticate('admin', 'admin'))
-        self.assertTrue(isinstance(c.admin.collection_names(), list))
-        self.assertTrue(c.admin.logout() is None)
-        self.assertRaises(pymongo.errors.OperationFailure, c.admin.collection_names)
+        self.assertRaises(pymongo.errors.OperationFailure, c.admin.list_collection_names)
+        c.close()
+        c = pymongo.MongoClient(self.server.host, self.server.port, username='admin', password='admin')
+        self.assertTrue(isinstance(c.admin.list_collection_names(), list))
+        c.close()
 
     def test_auth_collection(self):
-        c = pymongo.MongoClient(self.server.host, self.server.port)
-        self.assertTrue(c.admin.authenticate('admin', 'admin'))
+        c = pymongo.MongoClient(self.server.host, self.server.port, username='admin', password='admin')
+        self.assertTrue(bool(c.admin.command('ping')['ok']))
         db = c.test_server_auth
-        db.add_user('user', 'userpass', roles=['readWrite'])
-        c.admin.logout()
+        db.command('createUser', 'user', pwd='userpass', roles=['readWrite'])
+        c.close()
 
-        self.assertTrue(db.authenticate('user', 'userpass'))
-        self.assertTrue(db.foo.insert({'foo': 'bar'}, wtimeout=1000))
+        c = pymongo.MongoClient(self.server.host, self.server.port, username='admin', password='admin')
+        db = c.test_server_auth
+        self.assertTrue(db.foo.insert_one({'foo': 'bar'}))
         self.assertTrue(isinstance(db.foo.find_one(), dict))
-        db.logout()
-        self.assertRaises(pymongo.errors.OperationFailure, db.foo.find_one)
+        c.close()
 
 if __name__ == '__main__':
     unittest.main()
