@@ -161,7 +161,7 @@ class ShardedCluster(BaseModel):
                     client = ReplicaSets()._storage[instance_id].connection()
                 db = client[self.auth_source]
                 if self.x509_extra_user:
-                    db.command("CreateUser", DEFAULT_SUBJECT, roles=roles)
+                    db.command("createUser", DEFAULT_SUBJECT, roles=roles)
 
                 create_user(db, self.mongos_version, self.login, self.password,
                             roles)

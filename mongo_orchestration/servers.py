@@ -205,6 +205,7 @@ class Server(BaseModel):
         """return authenticated connection"""
         c = pymongo.MongoClient(
             self.hostname,
+            directConnection=True,
             socketTimeoutMS=self.socket_timeout, **self.kwargs)
         connected(c)
         if not self.is_mongos and self.login and not self.restart_required:
@@ -212,7 +213,7 @@ class Server(BaseModel):
             auth_dict = dict(username=self.login, password=self.password)
             kwargs.update(auth_dict)
             c = pymongo.MongoClient(
-                self.hostname, fsync=True,
+                self.hostname, directConnection=True,
                 socketTimeoutMS=self.socket_timeout, **self.kwargs)
             try:
                 connected(c)

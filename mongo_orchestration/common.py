@@ -32,7 +32,7 @@ LOGGING_FORMAT = '%(asctime)s [%(levelname)s] %(name)s:%(lineno)d - %(message)s'
 DEFAULT_BIND = os.environ.get('MO_HOST', 'localhost')
 DEFAULT_PORT = int(os.environ.get('MO_PORT', '8889'))
 DEFAULT_SERVER = 'cherrypy'
-DEFAULT_SOCKET_TIMEOUT = 20000  # 20 seconds.
+DEFAULT_SOCKET_TIMEOUT = 30000  # 30 seconds.
 
 # Username for included client x509 certificate.
 DEFAULT_SUBJECT = (
@@ -127,12 +127,12 @@ def create_user(db, mongo_version, user, password, roles):
         db.command('createUser', user, pwd=password, roles=roles,
                    writeConcern=db.write_concern.document)
     else:
-        db.command("CreateUser", user, pwd=password, roles=roles)
+        db.command("createUser", user, pwd=password, roles=roles)
 
 
 def connected(client):
-    # Await connection in PyMongo 3.0.
-    client.admin.command('ismaster')
+    # Await connection in PyMongo 4.0.
+    client.admin.command('ping')
     return client
 
 

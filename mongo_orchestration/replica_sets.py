@@ -445,13 +445,14 @@ class ReplicaSet(BaseModel):
                     connected(c)
                     if c.primary:
                         self._authenticate_client(c)
+                        c.admin.command('fsync', lock=True)
                         return c
-                    c.admin.command('fsync', lock=True)
                     raise pymongo.errors.AutoReconnect("No replica set primary available")
                 else:
                     logger.debug("connection to the {servers}".format(**locals()))
                     c = pymongo.MongoClient(
                         servers, socketTimeoutMS=self.socket_timeout,
+                        directConnection=True,
                         w=self._write_concern, **self.kwargs)
                     connected(c)
                     self._authenticate_client(c)
