@@ -279,27 +279,7 @@ DEFAULT_CERTS = os.path.join(
 CERTS = os.environ.get('MONGO_ORCHESTRATION_CERTS', DEFAULT_CERTS)
 
 
-# Requires mongo-orchestration running on port 8889.
-# For SSL support you must modify the CERTS path.
-#
-# Usage:
-# mongo-launch <single|repl|shard> <auth> <ssl>
-#
-# Examples (standalone node):
-# mongo-launch single
-# mongo-launch single auth
-# mongo-launch single auth ssl
-#
-# Sharded clusters:
-# mongo-launch shard
-# mongo-launch shard auth
-# mongo-launch shard auth ssl
-#
-# Replica sets:
-# mongo-launch repl
-# mongo-launch repl single
-# mongo-launch repl single auth
-if __name__ == '__main__':
+def main():
     for arg in sys.argv[1:]:
         try:
             port = int(arg)
@@ -342,3 +322,27 @@ if __name__ == '__main__':
         if data == 'r':
             cluster.restart_primary()
     cluster.stop()
+
+
+# Requires mongo-orchestration running on port 8889.
+# For SSL support you must modify the CERTS path.
+#
+# Usage:
+# mongo-launch <single|repl|shard> <auth> <ssl>
+#
+# Examples (standalone node):
+# mongo-launch single
+# mongo-launch single auth
+# mongo-launch single auth ssl
+#
+# Sharded clusters:
+# mongo-launch shard
+# mongo-launch shard auth
+# mongo-launch shard auth ssl
+#
+# Replica sets:
+# mongo-launch repl
+# mongo-launch repl single
+# mongo-launch repl single auth
+if __name__ == '__main__':
+    main()
