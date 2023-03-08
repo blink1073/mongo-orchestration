@@ -120,7 +120,7 @@ class BaseModel(object):
 
 
 def create_user(db, mongo_version, user, password, roles):
-    db.command("createUser", user, pwd=password, roles=roles)
+    db.command("createUser", user, pwd=password, roles=roles, writeConcern=db.write_concern.document)
 
 
 def connected(client):

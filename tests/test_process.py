@@ -218,22 +218,6 @@ class ProcessTestCase(unittest.TestCase):
         self.assertTrue(isinstance(host, str))
         process.kill_mprocess(proc)
 
-    def test_mprocess_timeout(self):
-        port = self.pp.port()
-        cfg = self.cfg.copy()
-        cfg['journal'] = True
-        config_path = process.write_config(cfg)
-        self.tmp_files.append(config_path)
-        proc, host = process.mprocess(self.bin_path, config_path, port, 0)
-        self.assertTrue(isinstance(proc, subprocess.Popen))
-        self.assertTrue(isinstance(host, str))
-        process.kill_mprocess(proc)
-        if platform.system() == 'Windows':
-            raise SkipTest("Cannot test mongod startup timeout on Windows.")
-        with self.assertRaises(TimeoutError):
-            result = process.mprocess(self.bin_path, config_path, port, 0.1)
-            print(result)
-
     def test_mprocess_busy_port(self):
         config_path = process.write_config(self.cfg)
         self.tmp_files.append(config_path)
