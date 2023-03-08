@@ -51,8 +51,8 @@ class Server(BaseModel):
 
     # regular expression matching MongoDB versions
     version_patt = re.compile(
-        '(?:db version v?|MongoS version v?|mongos db version v?)'
-        '(?P<version>(\d+\.)+\d+)',
+        r'(?:db version v?|MongoS version v?|mongos db version v?)'
+        r'(?P<version>(\d+\.)+\d+)',
         re.IGNORECASE)
 
     def __init_db(self, dbpath):
@@ -202,15 +202,16 @@ class Server(BaseModel):
         """return authenticated connection"""
         c = pymongo.MongoClient(
             self.hostname,
-            directConnection=True,
+            directConnection=True, fsync=True,
             socketTimeoutMS=self.socket_timeout, **self.kwargs)
         connected(c)
         if not self.is_mongos and self.login and not self.restart_required:
+            c.close()
             kwargs = self.kwargs.copy()
             auth_dict = dict(username=self.login, password=self.password)
             kwargs.update(auth_dict)
             c = pymongo.MongoClient(
-                self.hostname, directConnection=True,
+                self.hostname, directConnection=True, fsync=True,
                 socketTimeoutMS=self.socket_timeout, **self.kwargs)
             try:
                 connected(c)
@@ -218,7 +219,6 @@ class Server(BaseModel):
                 logger.exception("Could not authenticate to %s with %r"
                                  % (self.hostname, auth_dict))
                 raise
-        c.admin.command('fsync', lock=True)
         return c
 
     @property

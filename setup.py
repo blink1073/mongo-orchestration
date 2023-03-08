@@ -87,9 +87,6 @@ setup(
     install_requires=['pymongo>=4.2,<5',
                       'bottle>=0.12.7',
                       'cheroot>=5.11'] + extra_deps,
-    extras_require={
-        ':python_version=="2.6"': py26_requires
-    },
     tests_require=['coverage>=3.5'] + extra_test_deps,
     packages=find_packages(exclude=('tests',)),
     package_data={
