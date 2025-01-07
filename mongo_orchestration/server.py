@@ -8,6 +8,7 @@ import socket
 import sys
 import time
 import traceback
+import Path
     
 from bson import SON
 
@@ -167,6 +168,10 @@ def main(argv=None):
         pid = daemon.start()
         print('Daemon process started with pid: %d' % pid)
         print('pid exists?', os.path.exists(os.path.abspath(args.pidfile)))
+        time.sleep(5)
+        print('pid exists?', os.path.exists(os.path.abspath(args.pidfile)))
+        server_log = Path(args.pidfile).parent / "server.log"
+        print('server_log:', server_log.read_text())
         if not await_connection(host=args.bind, port=args.port):
             print(
                 'Could not connect to daemon running on %s:%d (pid: %d) '
