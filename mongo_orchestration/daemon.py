@@ -109,14 +109,18 @@ class Daemon(object):
         sys.stdin.flush()
         sys.stdout.flush()
         sys.stderr.flush()
+        logger.info('hello 1')
 
         os.dup2(self.stdin.fileno(), sys.stdin.fileno())
         os.dup2(self.stdout.fileno(), sys.stdout.fileno())
         os.dup2(self.stderr.fileno(), sys.stderr.fileno())
+        logger.info('hello 2')
 
         # write pidfile
         atexit.register(self.delpid)
+        logger.info('hello 3')
         pid = str(os.getpid())
+        logger.info('hello 4')
         logger.info('writing pidfid', self.pidfile)
         with open(self.pidfile, 'w+') as fd:
             fd.write("%s\n" % pid)
