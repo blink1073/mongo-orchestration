@@ -149,8 +149,10 @@ class Daemon(object):
 
         # Start the daemon
         pid = self.daemonize()
+        logger.info('pid? %s', pid)
         if pid:
             return pid
+        logger.info('starting run()...')
         self.run()
 
     def stop(self):

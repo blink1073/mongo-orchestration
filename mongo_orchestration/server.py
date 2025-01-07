@@ -114,6 +114,7 @@ class MyDaemon(Daemon):
 
     def run(self):
         log = logging.getLogger(__name__)
+        log.info('in run...')
 
         from bottle import run
         setup(getattr(self.args, 'releases', {}), self.args.env)
