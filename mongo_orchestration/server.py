@@ -115,8 +115,10 @@ class MyDaemon(Daemon):
     def run(self):
         log = logging.getLogger(__name__)
         log.info('in run...')
-
-        from bottle import run
+        try:
+            from bottle import run
+        except Exception as e:
+            log.info('in run error... %s', str(e))
         log.info('in run... 2')
         setup(getattr(self.args, 'releases', {}), self.args.env)
         log.info('in run... 3')
