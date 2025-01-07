@@ -166,6 +166,7 @@ def main(argv=None):
         print('Preparing to start mongo-orchestration daemon')
         pid = daemon.start()
         print('Daemon process started with pid: %d' % pid)
+        print('pid exists?', os.path.exists(os.path.abspath(args.pidfile)))
         if not await_connection(host=args.bind, port=args.port):
             print(
                 'Could not connect to daemon running on %s:%d (pid: %d) '
