@@ -121,10 +121,10 @@ class Daemon(object):
         logger.info('hello 3')
         pid = str(os.getpid())
         logger.info('hello 4')
-        logger.info('writing pidfid', self.pidfile)
+        logger.info('writing pidfid %s', self.pidfile)
         with open(self.pidfile, 'w+') as fd:
             fd.write("%s\n" % pid)
-        logger.info('wrote pidfid', self.pidfile)
+        logger.info('wrote pidfid %s', self.pidfile)
 
     def delpid(self):
         """remove pidfile"""
