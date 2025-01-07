@@ -117,20 +117,29 @@ class MyDaemon(Daemon):
         log.info('in run...')
 
         from bottle import run
+        log.info('in run... 2')
         setup(getattr(self.args, 'releases', {}), self.args.env)
+        log.info('in run... 3')
         BaseModel.socket_timeout = self.args.socket_timeout
+        log.info('in run... 4, %s', self.args.command)
         if self.args.command in ('start', 'restart'):
+            log.info('in run... 5')
             print("Starting Mongo Orchestration on port %d..." % self.args.port)
+            log.info('in run... 6')
             try:
                 log.debug('Starting HTTP server on host: %s; port: %d',
                           self.args.bind, self.args.port)
+                log.info('in run... 7')
                 run(get_app(), host=self.args.bind, port=self.args.port,
                     debug=False, reloader=False, quiet=not self.args.no_fork,
                     server=self.args.server)
+                log.info('in run... 8')
             except Exception:
+                log.info('in run... 9')
                 traceback.print_exc(file=sys.stdout)
                 log.exception('Could not start a new server.')
                 raise
+        log.info('in run... 10')
 
     def set_args(self, args):
         self.args = args
