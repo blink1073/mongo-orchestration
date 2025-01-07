@@ -157,6 +157,7 @@ def main(argv=None):
     daemon = MyDaemon(os.path.abspath(args.pidfile), timeout=5,
                       stdout=sys.stdout)
     daemon.set_args(args)
+    print("HELLO", args)
     # Set default bind ip for mongo processes using argument from --bind.
     Server.mongod_default['bind_ip'] = args.bind
     if args.command == 'stop':

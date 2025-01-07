@@ -117,8 +117,10 @@ class Daemon(object):
         # write pidfile
         atexit.register(self.delpid)
         pid = str(os.getpid())
+        logger.info('writing pidfid', self.pidfile)
         with open(self.pidfile, 'w+') as fd:
             fd.write("%s\n" % pid)
+        logger.info('wrote pidfid', self.pidfile)
 
     def delpid(self):
         """remove pidfile"""
@@ -209,4 +211,3 @@ def is_unix_process_running(pid):
         else:
             raise err
     return True
-
