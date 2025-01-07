@@ -8,7 +8,7 @@ import socket
 import sys
 import time
 import traceback
-import Path
+from pathlib import Path
     
 from bson import SON
 
